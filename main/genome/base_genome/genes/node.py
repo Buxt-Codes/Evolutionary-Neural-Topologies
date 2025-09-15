@@ -1,7 +1,8 @@
 class NodeGene:
     """Represents a node (neuron) in the network."""
-    def __init__(self, id, node_type="hidden", activation="relu"):
+    def __init__(self, id, bias=None, node_type="hidden", activation="relu"):
         self.id = id
+        self.bias = None
         self.type = node_type  # "input", "hidden", "output"
         self.layer = -1
         self.activation = activation

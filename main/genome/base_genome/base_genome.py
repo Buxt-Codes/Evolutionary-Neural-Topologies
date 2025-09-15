@@ -1,61 +1,112 @@
 import random
 import copy
-from typing import Dict
+from typing import Dict, List
 
 from .genes import ConnectionGene, NodeGene
-from ..innovation_tracker import InnovationTracker
 from ...config import Config
 
 class BaseGenome:
     """Represents an individual's genetic makeup, defining a neural network."""
-    def __init__(self, id: int, input_size: int, output_size: int, innovation_tracker: InnovationTracker, config: Config):
+    def __init__(self, id: int, input_size: int, output_size: int, config: Config):
         self.id = id
         self.nodes: Dict[int, NodeGene] = {}
         self.connections: Dict[int, ConnectionGene] = {}
         self.fitness = 0.0
-        self.input_size = input_size
-        self.output_size = output_size
+        self.node_idx = 0
+        self.connection_idx = 0
+        self.config = config
 
         # Create input and output nodes
-        for i in range(input_size):
-            node_id = -(i + 1)
-            self.nodes[node_id] = NodeGene(node_id, node_type="input")
-            self.nodes[node_id].layer = 0
-
-        for i in range(output_size):
-            node_id = i
-            self.nodes[node_id] = NodeGene(node_id, node_type="output")
-            self.nodes[node_id].layer = 1
+        for _ in range(input_size):
+            self.nodes[self.node_idx] = NodeGene(self.node_idx, node_type="input")
+            self.node_idx += 1
+        
+        for _ in range(output_size):
+            self.nodes[self.node_idx] = NodeGene(self.node_idx, node_type="output")
+            self.node_idx += 1
+        
+        # Create hidden nodes
+        num_hidden = random.randint(0, config.initial_max_hidden)
+        for _ in range(num_hidden):
+            self.nodes[self.node_idx] = NodeGene(self.node_idx, node_type="hidden")
+            self.node_idx += 1
 
         self.input_nodes = [n for n in self.nodes if self.nodes[n].type == "input"]
         self.output_nodes = [n for n in self.nodes if self.nodes[n].type == "output"]
-
-        # Create initial connections        
-        for out_node in self.output_nodes:
-            in_node = random.choice(self.input_nodes)
-            innov = innovation_tracker.get_innovation(in_node, out_node)
-            self.connections[innov] = ConnectionGene(
-                in_node=in_node,
-                out_node=out_node,
-                innovation=innov,
-                enabled=True
-            )
+        hidden_nodes = [n for n in self.nodes if self.nodes[n].type == "hidden"]
         
-        # Create remaining random connections
-        for in_node in self.input_nodes:
-            for out_node in self.output_nodes:
-                if any(c.in_node == in_node and c.out_node == out_node for c in self.connections.values()):
-                    continue
-                if random.random() < config.initial_connection_prob:
-                    innov = innovation_tracker.get_innovation(in_node, out_node)
-                    self.connections[innov] = ConnectionGene(
-                        in_node=in_node,
-                        out_node=out_node,
-                        innovation=innov,
-                        enabled=True
-                    )
+        # Random initial connections
+        if hidden_nodes:
+            max_layers = config.initial_max_layers if len(hidden_nodes) > config.initial_max_layers else len(hidden_nodes)
+            num_layers = random.randint(2, max_layers)
+        else:
+            num_layers = 2
+        self.layers: Dict[int, List[int]] = {i: [] for i in range(num_layers + 1)}
 
-    def mutate_add_connection(self, innovation_tracker: InnovationTracker):
+        # Assign inputs to first layer
+        for n in self.input_nodes:
+            self.layers[0].append(n)
+            self.nodes[n].layer = 0
+
+        # Assign outputs to final layer
+        for n in self.output_nodes:
+            self.layers[num_layers].append(n)
+            self.nodes[n].layer = num_layers
+
+        # Assign hidden nodes randomly across intermediate layers
+        for n in hidden_nodes:
+            layer = random.randint(1, num_layers - 1)
+            self.layers[layer].append(n)
+            self.nodes[n].layer = layer
+
+        for in_layer in range(num_layers):
+            for in_node in self.layers[in_layer]:
+                for out_layer in range(in_layer + 1, num_layers + 1):
+                    for out_node in self.layers[out_layer]:
+                        if random.random() < config.initial_connection_prob:
+                            self.connections[self.connection_idx] = ConnectionGene(
+                                id=self.connection_idx,
+                                in_node=in_node,
+                                out_node=out_node,
+                                enabled=True
+                            )
+                            self.connection_idx += 1
+
+        for node_id, node in self.nodes.items():
+            # Ensure incoming for non-input nodes
+            if node.type != "input":
+                if not any(c.out_node == node_id for c in self.connections.values()):
+                    # pick a random earlier layer
+                    candidate_layers = [l for l in self.layers if l < self.nodes[node_id].layer]
+                    if candidate_layers:
+                        in_layer = random.choice(candidate_layers)
+                        in_node = random.choice(self.layers[in_layer])
+                        self.connections[self.connection_idx] = ConnectionGene(
+                            id=self.connection_idx,
+                            in_node=in_node,
+                            out_node=node_id,
+                            enabled=True
+                        )
+                        self.connection_idx += 1
+            
+            if node.type != "output":
+                if not any(c.in_node == node_id for c in self.connections.values()):
+                    # pick a random later layer
+                    candidate_layers = [l for l in self.layers if l > self.nodes[node_id].layer]
+                    if candidate_layers:
+                        out_layer = random.choice(candidate_layers)
+                        out_node = random.choice(self.layers[out_layer])
+                        self.connections[self.connection_idx] = ConnectionGene(
+                            id=self.connection_idx,
+                            in_node=node_id,
+                            out_node=out_node,
+                            enabled=True
+                        )
+                        self.connection_idx += 1
+
+        self.assign_layers()
+
+    def mutate_add_connection(self):
         """Tries to add a new connection between two previously unconnected nodes."""
         adjacency_map = {nid: set() for nid in self.nodes}
         for conn in self.connections.values():
@@ -78,8 +129,8 @@ class BaseGenome:
 
         # Pick a random pair
         start_node_id, end_node_id = random.choice(candidate_pairs)
-        innov = innovation_tracker.get_innovation(start_node_id, end_node_id)
-        self.connections[innov] = ConnectionGene(start_node_id, end_node_id, innov)
+        self.connections[self.connection_idx] = ConnectionGene(self.connection_idx, start_node_id, end_node_id)
+        self.connection_idx += 1
 
     def mutate_remove_connection(self):
         """Tries to remove a random connection."""
@@ -91,7 +142,8 @@ class BaseGenome:
             if conn.enabled:
                 opp_adjacency_map[conn.out_node].add(conn.in_node)
         
-        exclude_out_nodes = [n for n in opp_adjacency_map if len(opp_adjacency_map[n]) == 1 and self.nodes[n].type == "output"]
+        exclude_out_nodes = [
+            n for n in opp_adjacency_map if len(opp_adjacency_map[n]) == 1 and self.nodes[n].type == "output"]
         possible_connections = [c for c in self.connections.values() if c.enabled and c.out_node not in exclude_out_nodes]
 
         if not possible_connections:
@@ -99,9 +151,9 @@ class BaseGenome:
 
         conn_to_remove = random.choice(possible_connections)
         conn_to_remove.enabled = False
-        self.connections.pop(conn_to_remove.innovation)
+        self.connections.pop(conn_to_remove.id)
 
-    def mutate_add_node(self, innovation_tracker: InnovationTracker, global_node_id_counter: Dict):
+    def mutate_add_node(self):
         """Splits an existing connection by adding a new node."""
         if not self.connections:
             return
@@ -112,11 +164,10 @@ class BaseGenome:
             
         conn_to_split = random.choice(enabled_connections)
         conn_to_split.enabled = False
-        self.connections.pop(conn_to_split.innovation)
+        self.connections.pop(conn_to_split.id)
 
-        new_node_id = global_node_id_counter['id']
-        self.nodes[new_node_id] = NodeGene(new_node_id, node_type="hidden")
-        global_node_id_counter['id'] += 1
+        self.nodes[self.node_idx] = NodeGene(self.node_idx, node_type="hidden")
+        self.node_idx += 1
 
         # Create two new connections
         in_node = conn_to_split.in_node
@@ -124,16 +175,16 @@ class BaseGenome:
         original_weight = conn_to_split.weight
 
         # Connection 1: original input -> new node (weight 1.0)
-        innov1 = innovation_tracker.get_innovation(in_node, new_node_id)
-        conn1 = ConnectionGene(in_node, new_node_id, innov1, weight=1.0)
-        self.connections[innov1] = conn1
+        conn1 = ConnectionGene(self.connection_idx, in_node, self.node_idx - 1, weight=1.0)
+        self.connections[self.connection_idx] = conn1
+        self.connection_idx += 1
 
         # Connection 2: new node -> original output (original weight)
-        innov2 = innovation_tracker.get_innovation(new_node_id, out_node)
-        conn2 = ConnectionGene(new_node_id, out_node, innov2, weight=original_weight)
-        self.connections[innov2] = conn2
+        conn2 = ConnectionGene(self.node_idx - 1, out_node, self.connection_idx, weight=original_weight)
+        self.connections[self.connection_idx] = conn2
+        self.connection_idx += 1
 
-    def mutate_remove_node(self, innovation_tracker: InnovationTracker):
+    def mutate_remove_node(self):
         """Tries to remove a random node."""
         hidden_nodes = [nid for nid, n in self.nodes.items() if n.type == "hidden"]
         if not hidden_nodes:
@@ -155,75 +206,58 @@ class BaseGenome:
                     continue
 
                 new_weight = in_conn.weight * out_conn.weight
-                innov = innovation_tracker.get_innovation(in_conn.in_node, out_conn.out_node)
-                self.connections[innov] = ConnectionGene(
+                self.connections[self.connection_idx] = ConnectionGene(
+                    id=self.connection_idx,
                     in_node=in_conn.in_node,
                     out_node=out_conn.out_node,
-                    innovation=innov,
                     weight=new_weight,
                     enabled=True
                 )
+                self.connection_idx += 1
 
         self.nodes.pop(node_to_remove)
         for conn in incoming + outgoing:
-            self.connections.pop(conn.innovation, None)
+            self.connections.pop(conn.id, None)
 
-    def mutate_weights(self, config: Config):
-        """Perturbs or replaces the weights of connections."""
-        for conn in self.connections.values():
-            if random.random() < config.weight_replace_prob:
-                conn.weight = random.uniform(-1.0, 1.0)
-            else:
-                perturbation = random.gauss(0, config.weight_mutate_power)
-                conn.weight += perturbation
-                conn.weight = max(-1.0, min(1.0, conn.weight)) # Clamp weight
+    # # --- crossover ---
+    # @staticmethod
+    # def crossover(parent1: 'Genome', parent2: 'Genome', child_id: int, innovation_tracker: InnovationTracker) -> 'Genome':
+    #     """Performs crossover between two parent genomes."""
+    #     # Ensure parent1 is the more fit parent
+    #     if parent2.fitness > parent1.fitness:
+    #         parent1, parent2 = parent2, parent1
 
-    def mutate_activations(self, activation_mutate_prob: float = 0.1, weights=None):
-        """Perturbs the activations of nodes."""
-        activations = ['relu', 'sigmoid', 'tanh']
-        for node in self.nodes.values():
-            if random.random() < activation_mutate_prob:
-                node.activation = random.choices(activations, weights=weights)[0]
+    #     child = Genome(child_id, parent1.input_size, parent1.output_size, innovation_tracker)
+    #     child.nodes = copy.deepcopy(parent1.nodes)
 
-    # --- crossover ---
-    @staticmethod
-    def crossover(parent1: 'Genome', parent2: 'Genome', child_id: int, innovation_tracker: InnovationTracker) -> 'Genome':
-        """Performs crossover between two parent genomes."""
-        # Ensure parent1 is the more fit parent
-        if parent2.fitness > parent1.fitness:
-            parent1, parent2 = parent2, parent1
-
-        child = Genome(child_id, parent1.input_size, parent1.output_size, innovation_tracker)
-        child.nodes = copy.deepcopy(parent1.nodes)
-
-        # Inherit connections
-        innovs1 = sorted(parent1.connections.keys())
-        innovs2 = sorted(parent2.connections.keys())
+    #     # Inherit connections
+    #     innovs1 = sorted(parent1.connections.keys())
+    #     innovs2 = sorted(parent2.connections.keys())
         
-        i1, i2 = 0, 0
-        while i1 < len(innovs1) and i2 < len(innovs2):
-            innov1, innov2 = innovs1[i1], innovs2[i2]
-            conn1 = parent1.connections[innov1]
-            conn2 = parent2.connections[innov2]
+    #     i1, i2 = 0, 0
+    #     while i1 < len(innovs1) and i2 < len(innovs2):
+    #         innov1, innov2 = innovs1[i1], innovs2[i2]
+    #         conn1 = parent1.connections[innov1]
+    #         conn2 = parent2.connections[innov2]
 
-            if innov1 == innov2: # Matching gene
-                child.connections[innov1] = copy.deepcopy(random.choice([conn1, conn2]))
-                i1 += 1
-                i2 += 1
-            elif innov1 < innov2: # Disjoint/Excess gene from parent1
-                child.connections[innov1] = copy.deepcopy(conn1)
-                i1 += 1
-            else: # Disjoint gene from parent2
-                i2 += 1
+    #         if innov1 == innov2: # Matching gene
+    #             child.connections[innov1] = copy.deepcopy(random.choice([conn1, conn2]))
+    #             i1 += 1
+    #             i2 += 1
+    #         elif innov1 < innov2: # Disjoint/Excess gene from parent1
+    #             child.connections[innov1] = copy.deepcopy(conn1)
+    #             i1 += 1
+    #         else: # Disjoint gene from parent2
+    #             i2 += 1
 
-        # Inherit remaining excess genes from parent1
-        while i1 < len(innovs1):
-            innov1 = innovs1[i1]
-            conn1 = parent1.connections[innov1]
-            child.connections[innov1] = copy.deepcopy(conn1)
-            i1 += 1
+    #     # Inherit remaining excess genes from parent1
+    #     while i1 < len(innovs1):
+    #         innov1 = innovs1[i1]
+    #         conn1 = parent1.connections[innov1]
+    #         child.connections[innov1] = copy.deepcopy(conn1)
+    #         i1 += 1
             
-        return child
+    #     return child
     
     # --- utils ---
     def assign_layers(self):

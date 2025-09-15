@@ -8,6 +8,9 @@ class Config:
     input_size = 4
     output_size = 1
 
+    # Bias
+    use_bias = True
+
     # Speciation
     c1 = 1.0
     c2 = 1.0
@@ -27,3 +30,5 @@ class Config:
 
     # Initialisation
     initial_connection_prob = 0.5
+    initial_max_hidden = 10
+    initial_max_layers = 5
