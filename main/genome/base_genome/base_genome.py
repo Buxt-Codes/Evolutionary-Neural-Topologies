@@ -1,13 +1,15 @@
 import random
 import copy
 from typing import Dict, List
+import matplotlib.pyplot as plt
+import networkx as nx
 
 from .genes import ConnectionGene, NodeGene
 from ...config import Config
 
 class BaseGenome:
     """Represents an individual's genetic makeup, defining a neural network."""
-    def __init__(self, id: int, input_size: int, output_size: int, config: Config):
+    def __init__(self, id: int, config: Config):
         self.id = id
         self.nodes: Dict[int, NodeGene] = {}
         self.connections: Dict[int, ConnectionGene] = {}
@@ -17,11 +19,11 @@ class BaseGenome:
         self.config = config
 
         # Create input and output nodes
-        for _ in range(input_size):
+        for _ in range(config.input_size):
             self.nodes[self.node_idx] = NodeGene(self.node_idx, node_type="input")
             self.node_idx += 1
         
-        for _ in range(output_size):
+        for _ in range(config.output_size):
             self.nodes[self.node_idx] = NodeGene(self.node_idx, node_type="output")
             self.node_idx += 1
         
@@ -38,7 +40,7 @@ class BaseGenome:
         # Random initial connections
         if hidden_nodes:
             max_layers = config.initial_max_layers if len(hidden_nodes) > config.initial_max_layers else len(hidden_nodes)
-            num_layers = random.randint(2, max_layers)
+            num_layers = random.randint(2, max_layers + 2)
         else:
             num_layers = 2
         self.layers: Dict[int, List[int]] = {i: [] for i in range(num_layers + 1)}
@@ -80,14 +82,15 @@ class BaseGenome:
                     candidate_layers = [l for l in self.layers if l < self.nodes[node_id].layer]
                     if candidate_layers:
                         in_layer = random.choice(candidate_layers)
-                        in_node = random.choice(self.layers[in_layer])
-                        self.connections[self.connection_idx] = ConnectionGene(
-                            id=self.connection_idx,
-                            in_node=in_node,
-                            out_node=node_id,
-                            enabled=True
-                        )
-                        self.connection_idx += 1
+                        if self.layers[in_layer]:
+                            in_node = random.choice(self.layers[in_layer])
+                            self.connections[self.connection_idx] = ConnectionGene(
+                                id=self.connection_idx,
+                                in_node=in_node,
+                                out_node=node_id,
+                                enabled=True
+                            )
+                            self.connection_idx += 1
             
             if node.type != "output":
                 if not any(c.in_node == node_id for c in self.connections.values()):
@@ -95,14 +98,15 @@ class BaseGenome:
                     candidate_layers = [l for l in self.layers if l > self.nodes[node_id].layer]
                     if candidate_layers:
                         out_layer = random.choice(candidate_layers)
-                        out_node = random.choice(self.layers[out_layer])
-                        self.connections[self.connection_idx] = ConnectionGene(
-                            id=self.connection_idx,
-                            in_node=node_id,
-                            out_node=out_node,
-                            enabled=True
-                        )
-                        self.connection_idx += 1
+                        if self.layers[out_layer]:
+                            out_node = random.choice(self.layers[out_layer])
+                            self.connections[self.connection_idx] = ConnectionGene(
+                                id=self.connection_idx,
+                                in_node=node_id,
+                                out_node=out_node,
+                                enabled=True
+                            )
+                            self.connection_idx += 1
 
         self.assign_layers()
 
@@ -219,45 +223,152 @@ class BaseGenome:
         for conn in incoming + outgoing:
             self.connections.pop(conn.id, None)
 
-    # # --- crossover ---
-    # @staticmethod
-    # def crossover(parent1: 'Genome', parent2: 'Genome', child_id: int, innovation_tracker: InnovationTracker) -> 'Genome':
-    #     """Performs crossover between two parent genomes."""
-    #     # Ensure parent1 is the more fit parent
-    #     if parent2.fitness > parent1.fitness:
-    #         parent1, parent2 = parent2, parent1
+    # --- crossover ---
+    @staticmethod
+    def crossover(parent1: 'BaseGenome', parent2: 'BaseGenome', child_id: int, config: Config) -> 'BaseGenome':
+        """Performs crossover between two parent genomes."""
 
-    #     child = Genome(child_id, parent1.input_size, parent1.output_size, innovation_tracker)
-    #     child.nodes = copy.deepcopy(parent1.nodes)
+        # Create base child
+        child = copy.deepcopy(parent1)
+        child.id = child_id
 
-    #     # Inherit connections
-    #     innovs1 = sorted(parent1.connections.keys())
-    #     innovs2 = sorted(parent2.connections.keys())
+        # Random crossover point
+        start_frac, end_frac = sorted([random.random(), random.random()])
+
+        p1_max_layer = max(parent1.nodes.values(), key=lambda n: n.layer).layer
+        p2_max_layer = max(parent2.nodes.values(), key=lambda n: n.layer).layer
+
+        # Compute layer ranges
+        p1_start = max(1, round(start_frac * p1_max_layer))
+        p1_end = min(p1_max_layer - 1, round(end_frac * p1_max_layer))
+        p2_start = max(1, round(start_frac * p2_max_layer))
+        p2_end = min(p2_max_layer - 1, round(end_frac * p2_max_layer))
+
+        # Helper: select node IDs in a layer range
+        def select_block_nodes(genome, start_layer, end_layer):
+            return [n.id for n in genome.nodes.values() if start_layer <= n.layer <= end_layer]
+
+        # Remove block from child
+        child_block_nodes = select_block_nodes(child, p1_start, p1_end)
+        for nid in child_block_nodes:
+            child.nodes.pop(nid, None)
+
+        # Insert block from p2
+        parent2_block_nodes = select_block_nodes(parent2, p2_start, p2_end)
+        id_map = {}  # parent2_node_id -> new child node_id
+        for nid in parent2_block_nodes:
+            node = copy.deepcopy(parent2.nodes[nid])
+            new_id = child.node_idx
+            child.node_idx += 1
+            id_map[nid] = new_id
+            # Add in placeholder layer for now
+            node.layer = -1
+            node.id = new_id
+            child.nodes[new_id] = node
         
-    #     i1, i2 = 0, 0
-    #     while i1 < len(innovs1) and i2 < len(innovs2):
-    #         innov1, innov2 = innovs1[i1], innovs2[i2]
-    #         conn1 = parent1.connections[innov1]
-    #         conn2 = parent2.connections[innov2]
+        # Remove existing connections from child block
+        connections_to_remove = []
+        for cid, conn in child.connections.items():
+            if conn.in_node in child_block_nodes or conn.out_node in child_block_nodes:
+                connections_to_remove.append(cid)
+        for cid in connections_to_remove:
+            child.connections.pop(cid)
+        
+        # Layer mapping p2 -> p1
+        layer_map = {}
+        for l2 in range(p2_max_layer + 1):
+            scaled_layer = int(l2 * p1_max_layer / p2_max_layer)
+            layer_map[l2] = scaled_layer
 
-    #         if innov1 == innov2: # Matching gene
-    #             child.connections[innov1] = copy.deepcopy(random.choice([conn1, conn2]))
-    #             i1 += 1
-    #             i2 += 1
-    #         elif innov1 < innov2: # Disjoint/Excess gene from parent1
-    #             child.connections[innov1] = copy.deepcopy(conn1)
-    #             i1 += 1
-    #         else: # Disjoint gene from parent2
-    #             i2 += 1
+        # p1 layers
+        p1_layers = {}
+        for n in parent1.nodes.values():
+            if p1_layers.get(n.layer) is None:
+                p1_layers[n.layer] = [n]
+            else:
+                p1_layers[n.layer].append(n)
 
-    #     # Inherit remaining excess genes from parent1
-    #     while i1 < len(innovs1):
-    #         innov1 = innovs1[i1]
-    #         conn1 = parent1.connections[innov1]
-    #         child.connections[innov1] = copy.deepcopy(conn1)
-    #         i1 += 1
+        # p2 layers
+        p2_layers = {}
+        for n in parent2.nodes.values():
+            if p2_layers.get(n.layer) is None:
+                p2_layers[n.layer] = [n]
+            else:
+                p2_layers[n.layer].append(n)
+
+        # Add connections from p2
+        for conn in parent2.connections.values():
+            if conn.in_node in parent2_block_nodes and conn.out_node in parent2_block_nodes:
+                new_conn = copy.deepcopy(conn)
+                new_conn.in_node = id_map[conn.in_node]
+                new_conn.out_node = id_map[conn.out_node]
+                new_conn.id = child.connection_idx
+
+                child.connections[child.connection_idx] = new_conn
+                child.connection_idx += 1
             
-    #     return child
+            elif conn.in_node in parent2_block_nodes:
+                new_conn = copy.deepcopy(conn)
+                new_conn.in_node = id_map[conn.in_node]
+                new_conn.id = child.connection_idx
+
+                out_node_layer = layer_map[parent2.nodes[conn.out_node].layer]
+                if out_node_layer == child.nodes[new_conn.in_node].layer:
+                    out_node_layer += 1
+                while out_node_layer not in p1_layers:
+                    out_node_layer += 1
+                    if out_node_layer > p1_max_layer:
+                        break
+                if out_node_layer not in p1_layers:
+                    continue
+
+                possible_out_nodes = {n.id: n.avg_activations if n.avg_activations is not None else 0 for n in p1_layers[out_node_layer]}
+                target_activation = parent2.nodes[conn.out_node].avg_activations
+                if target_activation:
+                    closest_nid = min(
+                        possible_out_nodes, 
+                        key=lambda nid: abs(possible_out_nodes[nid] - target_activation)
+                    
+                    )
+                else:
+                    closest_nid = random.choice(list(possible_out_nodes))
+                new_conn.out_node = closest_nid
+
+                child.connections[child.connection_idx] = new_conn
+                child.connection_idx += 1
+            
+            elif conn.out_node in parent2_block_nodes:
+                new_conn = copy.deepcopy(conn)
+                new_conn.out_node = id_map[conn.out_node]
+                new_conn.id = child.connection_idx
+
+                in_node_layer = layer_map[parent2.nodes[conn.in_node].layer]
+                if in_node_layer == child.nodes[new_conn.out_node].layer:
+                    in_node_layer -= 1
+                while in_node_layer not in p1_layers:
+                    in_node_layer -= 1
+                    if in_node_layer < 0:
+                        break
+                if in_node_layer not in p1_layers:
+                    continue
+                    
+                possible_in_nodes = {n.id: n.avg_activations if n.avg_activations is not None else 0 for n in p1_layers[in_node_layer]}
+                target_activation = parent2.nodes[conn.in_node].avg_activations
+                if target_activation:
+                    closest_nid = min(
+                        possible_in_nodes, 
+                        key=lambda nid: abs(possible_in_nodes[nid] - target_activation)
+                    )       
+                else:
+                    closest_nid = random.choice(list(possible_in_nodes))
+                new_conn.in_node = closest_nid
+
+                child.connections[child.connection_idx] = new_conn
+                child.connection_idx += 1
+        
+        child.assign_layers()
+        
+        return child
     
     # --- utils ---
     def assign_layers(self):
@@ -278,3 +389,58 @@ class BaseGenome:
         # Assign layers to node objects
         for nid, layer in layers.items():
             self.nodes[nid].layer = layer
+    
+
+    @staticmethod
+    def visualize_genome(genome, ax=None):
+        """
+        Visualize a BaseGenome as a directed graph.
+        Inputs = green, hidden = blue, outputs = red.
+        Enabled edges = solid, disabled edges = dashed.
+        """
+        G = nx.DiGraph()
+
+        # Add nodes
+        for node_id, node in genome.nodes.items():
+            if node.type == "input":
+                color = "lightgreen"
+            elif node.type == "output":
+                color = "salmon"
+            else:
+                color = "lightblue"
+            G.add_node(node_id, layer=node.layer, color=color)
+
+        # Add edges
+        for conn in genome.connections.values():
+            style = "solid" if conn.enabled else "dashed"
+            G.add_edge(conn.in_node, conn.out_node, weight=conn.weight, style=style)
+
+        # Layout: group nodes by layer
+        pos = {}
+        layer_nodes = {}
+        for node_id, node in genome.nodes.items():
+            layer_nodes.setdefault(node.layer, []).append(node_id)
+
+        # Space layers out
+        for layer, nodes in layer_nodes.items():
+            for i, n in enumerate(nodes):
+                pos[n] = (layer, -i)  # x = layer, y = index
+
+        # Draw nodes
+        node_colors = [G.nodes[n]["color"] for n in G.nodes()]
+        nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=800, ax=ax)
+
+        # Draw edges
+        edge_colors = []
+        styles = []
+        for u, v, data in G.edges(data=True):
+            edge_colors.append("black")
+            styles.append(data["style"])
+        nx.draw_networkx_edges(G, pos, edgelist=G.edges(), edge_color=edge_colors, style=styles, ax=ax)
+
+        # Draw labels
+        labels = {n: str(n) for n in G.nodes()}
+        nx.draw_networkx_labels(G, pos, labels=labels, font_size=8, ax=ax)
+
+        if ax is None:
+            plt.show()

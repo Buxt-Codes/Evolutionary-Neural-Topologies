@@ -6,7 +6,7 @@ class ConnectionGene:
         self.id = id
         self.in_node = in_node
         self.out_node = out_node
-        self.weight = random.uniform(-1.0, 1.0) if weight is None else weight
+        self.weight = random.uniform(-0.5, 0.5) if weight is None else weight
         self.enabled = enabled
         
     def __repr__(self):

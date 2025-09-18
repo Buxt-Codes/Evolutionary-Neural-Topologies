@@ -1,96 +1,113 @@
+import copy
 import torch
 import torch.nn as nn
+from collections import defaultdict, deque
+from typing import List, Dict, Tuple
 
-from .base_genome import BaseGenome
+from .base_genome import BaseGenome, ConnectionGene, NodeGene
+from ..config import Config
 
-class GenomeNet(nn.Module):
-    """A PyTorch Module that represents the phenotype of a Genome."""
-    def __init__(self, genome: Genome):
+class GenotypeNet(nn.Module):
+    def __init__(self, genotype, config):
+        """Inisialise a GenotypeNet from a BaseGenome."""
         super().__init__()
-        self.genome = genome
-        
-        # Identify node types
-        self.input_nodes = sorted([n.id for n in genome.nodes.values() if n.type == "input"], reverse=True)
-        self.output_nodes = sorted([n.id for n in genome.nodes.values() if n.type == "output"])
-        
-        # Build network structure for forward pass
-        self._build_network()
+        self.genotype = genotype
+        self.use_bias = getattr(config, "use_bias", False)
 
-    def _get_activation(self, name: str):
-        if name == 'tanh':
-            return torch.tanh
-        elif name == 'sigmoid':
-            return torch.sigmoid
-        elif name == 'relu':
-            return torch.relu
-        # Default to identity
-        return lambda x: x
+        # Keep only enabled connections
+        self.connections = [c for c in genotype.connections.values() if c.enabled]
 
-    def _build_network(self):
-        """Topologically sort the nodes to create an execution plan."""
-        self.node_eval_order = []
-        
-        # Create adjacency list and in-degree count for Kahn's algorithm
-        in_degree = defaultdict(int)
-        adj = defaultdict(list)
-        
-        for conn in self.genome.connections.values():
-            if conn.enabled:
-                in_degree[conn.out_node] += 1
-                adj[conn.in_node].append(conn.out_node)
+        # Build node map
+        self.nodes = {n.id: n for n in genotype.nodes.values()}
+        self.sorted_nodes = sorted(genotype.nodes.values(), key=lambda n: (n.layer, n.id))
+        self.node_index = {nid: idx for idx, nid in enumerate(self.nodes)}
 
-        # Start with all nodes that have an in-degree of 0 (inputs)
-        queue = [n_id for n_id in self.genome.nodes if in_degree[n_id] == 0]
-        
-        while queue:
-            node_id = queue.pop(0)
-            self.node_eval_order.append(node_id)
-            
-            for neighbor_id in sorted(adj[node_id]): # Sort for deterministic order
-                in_degree[neighbor_id] -= 1
-                if in_degree[neighbor_id] == 0:
-                    queue.append(neighbor_id)
-        
-        # Store connections and activations for the forward pass
-        self.connections_map = defaultdict(list)
-        self.activations = {}
-        for conn in self.genome.connections.values():
-             if conn.enabled:
-                self.connections_map[conn.out_node].append((conn.in_node, torch.tensor(conn.weight, dtype=torch.float32)))
-        
-        for node in self.genome.nodes.values():
-            self.activations[node.id] = self._get_activation(node.activation)
+        # Register weights
+        self.weights = nn.Parameter(torch.tensor([c.weight for c in self.connections], dtype=torch.float32))
 
-    def forward(self, x: torch.Tensor):
-        """Executes the network in topologically sorted order."""
-        if x.dim() == 1:
-            x = x.unsqueeze(0) # Ensure batch dimension
-        
-        if x.shape[1] != len(self.input_nodes):
-            raise ValueError(f"Input tensor size ({x.shape[1]}) does not match number of input nodes ({len(self.input_nodes)})")
-        
-        node_values = {}
-        
-        # Initialize input node values
-        for i, node_id in enumerate(self.input_nodes):
-            node_values[node_id] = x[:, i]
+        # Register biases
+        if self.use_bias:
+            self.biases = nn.Parameter(torch.zeros(len(self.nodes)))
+        else:
+            self.register_buffer("biases", torch.zeros(len(self.nodes)))
 
-        # Evaluate nodes in topological order
-        for node_id in self.node_eval_order:
-            if node_id in self.input_nodes:
+        # Build edge index tensors
+        src = [self.node_index[c.in_node] for c in self.connections]
+        dst = [self.node_index[c.out_node] for c in self.connections]
+        self.register_buffer("src_idx", torch.tensor(src, dtype=torch.long))
+        self.register_buffer("dst_idx", torch.tensor(dst, dtype=torch.long))
+
+        # Input/output nodes
+        self.input_nodes = [n for n in genotype.nodes.values() if n.type == "input"]
+        self.output_nodes = [n for n in genotype.nodes.values() if n.type == "output"]
+
+        # Buffers for activation stats
+        self.register_buffer("_activation_sums", torch.zeros(len(self.nodes)))
+        self.register_buffer("_activation_counts", torch.zeros(len(self.nodes)))
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        device = x.device
+        values = torch.zeros(batch_size, len(self.nodes), device=device)
+
+        # Fill input activations
+        for i, n in enumerate(self.input_nodes):
+            values[:, self.node_index[n.id]] = x[:, i]
+
+        # Vectorized propagation
+        for node in self.sorted_nodes:
+            if node.type == "input":
                 continue
-            
-            # Sum inputs from incoming connections
-            incoming_sum = torch.zeros(x.shape[0], dtype=torch.float32)
-            if node_id in self.connections_map:
-                for in_node_id, weight in self.connections_map[node_id]:
-                    # Ensure the source node value has been computed
-                    if in_node_id in node_values:
-                        incoming_sum += node_values[in_node_id] * weight
 
-            # Apply activation function
-            node_values[node_id] = self.activations[node_id](incoming_sum)
+            idx = self.node_index[node.id]
 
-        # Collect output values
-        output_vals = [node_values.get(out_id, torch.zeros(x.shape[0])) for out_id in self.output_nodes]
-        return torch.stack(output_vals, dim=1)
+            # Gather contributions from all incoming edges in one go
+            mask = (self.dst_idx == idx)
+            if mask.any():
+                contrib = values[:, self.src_idx[mask]] * self.weights[mask]
+                total = contrib.sum(dim=1)
+            else:
+                total = torch.zeros(batch_size, device=device)
+
+            # Bias
+            if self.use_bias:
+                total = total + self.biases[idx]
+
+            # Activation
+            values[:, idx] = torch.relu(total)
+
+        # Record activations
+        batch_means = values.mean(dim=0).detach()
+        self._activation_sums += batch_means
+        self._activation_counts += 1
+
+        # Gather outputs
+        out_idx = [self.node_index[n.id] for n in self.output_nodes]
+        return values[:, out_idx]
+
+    def export_genotype(self):
+        """
+        Return a new genotype with updated weights, biases, and avg activations.
+        """
+        new_genotype = copy.deepcopy(self.genotype)
+
+        # Update connection weights
+        enabled_connections = [c for c in new_genotype.connections.values() if c.enabled]
+        for i, conn in enumerate(enabled_connections):
+            conn.weight = self.weights[i].detach().item()
+
+        # Update biases + activations
+        for node in new_genotype.nodes.values():
+            idx = self.node_index[node.id]
+
+            if self.use_bias and node.type != "input":
+                node.bias = self.biases[idx].detach().item()
+            else:
+                node.bias = None
+
+            if self._activation_counts[idx] > 0:
+                node.avg_activation = (self._activation_sums[idx] / self._activation_counts[idx]).item()
+            else:
+                node.avg_activation = 0.0
+
+        return new_genotype

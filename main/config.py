@@ -24,11 +24,14 @@ class Config:
     weight_mutate_power = 0.1
     weight_replace_prob = 0.1
 
+    # Crossover
+    prob_crossover = 0.8
+    
     # Reproduction
     survival_threshold = 0.2
     crossover_prob = 0.75
 
     # Initialisation
     initial_connection_prob = 0.5
-    initial_max_hidden = 10
-    initial_max_layers = 5
+    initial_max_hidden = 50
+    initial_max_layers = 10
