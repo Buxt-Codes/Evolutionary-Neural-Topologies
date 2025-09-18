@@ -136,6 +136,8 @@ class BaseGenome:
         self.connections[self.connection_idx] = ConnectionGene(self.connection_idx, start_node_id, end_node_id)
         self.connection_idx += 1
 
+        self.assign_layers()
+
     def mutate_remove_connection(self):
         """Tries to remove a random connection."""
         if not self.connections:
@@ -156,6 +158,8 @@ class BaseGenome:
         conn_to_remove = random.choice(possible_connections)
         conn_to_remove.enabled = False
         self.connections.pop(conn_to_remove.id)
+
+        self.prune()
 
     def mutate_add_node(self):
         """Splits an existing connection by adding a new node."""
@@ -187,6 +191,8 @@ class BaseGenome:
         conn2 = ConnectionGene(self.node_idx - 1, out_node, self.connection_idx, weight=original_weight)
         self.connections[self.connection_idx] = conn2
         self.connection_idx += 1
+
+        self.assign_layers()
 
     def mutate_remove_node(self):
         """Tries to remove a random node."""
@@ -222,6 +228,8 @@ class BaseGenome:
         self.nodes.pop(node_to_remove)
         for conn in incoming + outgoing:
             self.connections.pop(conn.id, None)
+        
+        self.prune()
 
     # --- crossover ---
     @staticmethod
@@ -366,7 +374,7 @@ class BaseGenome:
                 child.connections[child.connection_idx] = new_conn
                 child.connection_idx += 1
         
-        child.assign_layers()
+        child.prune()
         
         return child
     
@@ -390,6 +398,38 @@ class BaseGenome:
         for nid, layer in layers.items():
             self.nodes[nid].layer = layer
     
+    def prune(self):
+        """Prune disconnected nodes and their connections."""
+        # Build directed graph
+        G = nx.DiGraph()
+        for nid in self.nodes:
+            G.add_node(nid)
+        for cid, conn in self.connections.items():
+            if conn.enabled:
+                G.add_edge(conn.in_node, conn.out_node)
+
+        # Find nodes reachable from inputs and nodes that can reach outputs
+        reachable_from_inputs = set()
+        for inp in self.input_nodes:
+            reachable_from_inputs |= nx.descendants(G, inp) | {inp}
+
+        can_reach_outputs = set()
+        for out in self.output_nodes:
+            can_reach_outputs |= nx.ancestors(G, out) | {out}
+
+        valid_nodes = reachable_from_inputs & can_reach_outputs
+
+        # Remove invalid nodes
+        invalid_nodes = set(G.nodes()) - valid_nodes
+        G.remove_nodes_from(invalid_nodes)
+
+        # Update genome's nodes + connections
+        self.nodes = {nid: self.nodes[nid] for nid in G.nodes()}
+        self.connections = {
+            cid: conn for cid, conn in self.connections.items()
+            if conn.in_node in G and conn.out_node in G
+        }
+        self.assign_layers()
 
     @staticmethod
     def visualize_genome(genome, ax=None):
@@ -424,7 +464,7 @@ class BaseGenome:
         # Space layers out
         for layer, nodes in layer_nodes.items():
             for i, n in enumerate(nodes):
-                pos[n] = (layer, -i)  # x = layer, y = index
+                pos[n] = (layer, -i)
 
         # Draw nodes
         node_colors = [G.nodes[n]["color"] for n in G.nodes()]

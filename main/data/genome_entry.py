@@ -14,8 +14,3 @@ class GenomeEntry:
     iteration_found: int = 0
 
     metrics: Dict[str, float] = field(default_factory=dict)
-
-    num_layers: int = 0
-    num_nodes: int = 0
-    avg_nodes_per_layer: float = 0.0
-    avg_connections_per_node: float = 0.0

@@ -18,11 +18,11 @@ class Config:
     compatibility_threshold = 3.0
 
     # Mutation
+    max_mutations = 1
     prob_add_connection = 0.1
+    prob_remove_connection = 0.1
     prob_add_node = 0.05
-    prob_mutate_weight = 0.8
-    weight_mutate_power = 0.1
-    weight_replace_prob = 0.1
+    prob_remove_node = 0.05
 
     # Crossover
     prob_crossover = 0.8
