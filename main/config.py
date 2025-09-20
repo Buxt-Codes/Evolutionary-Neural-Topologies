@@ -1,10 +1,20 @@
-# =====================
-# CONFIG
-# =====================
-
 class Config:
+
+    # =====================
+    # Database
+    # =====================
     # Population
-    pop_size = 150
+    num_islands = 5
+    max_pop_per_island = 100
+    initial_pop_per_island = 25
+
+    # Feature Bins
+    max_nodes_bin = 1000
+    max_layers_bin = 1000
+    num_nodes_bins = 10
+    num_layers_bins = 10
+
+    # Network
     input_size = 4
     output_size = 1
 
@@ -30,6 +40,12 @@ class Config:
     # Reproduction
     survival_threshold = 0.2
     crossover_prob = 0.75
+
+    # Evaluatation
+    epochs = 3
+    batch_size = 32
+    train_data_path = ""
+    val_data_path = ""
 
     # Initialisation
     initial_connection_prob = 0.5

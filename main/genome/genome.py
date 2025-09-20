@@ -15,8 +15,6 @@ class Genome:
     def update_metadata(self):
         self.num_layers = max(self.genome.nodes.values(), key=lambda n: n.layer).layer
         self.num_nodes = len(self.genome.nodes)
-        self.avg_nodes_per_layer = self.num_nodes / self.num_layers
-        self.avg_connections_per_node = len(self.genome.connections) / self.num_nodes
 
     def mutate(self):
         config = self.genome.config
