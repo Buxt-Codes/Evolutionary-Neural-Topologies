@@ -137,9 +137,9 @@ class GenomeDatabase:
         bin_idx = torch.floor(torch.log(val_t + 1) / torch.log(torch.tensor(base)))
 
         # Clamp to valid range
-        bin_idx = torch.clamp(value, min=0, max=num_bins - 1)
+        bin_idx = max(0, min(value, num_bins - 1))
 
-        return int(bin_idx.item())
+        return int(bin_idx)
 
     def _get_coords(self, nodes_bin: int, layers_bin: int) -> str:
         return f"{nodes_bin}_{layers_bin}"
@@ -151,7 +151,14 @@ class GenomeDatabase:
         return self.islands[island].get(coords)
     
     def _is_better(self, genome1: GenomeEntry, genome2: GenomeEntry) -> bool:
-        return genome1.metrics["loss"] > genome2.metrics["loss"]
+        loss1 = genome1.metrics.get("loss")
+        loss2 = genome2.metrics.get("loss")
+
+        if loss1 is not None and loss2 is not None:
+            return loss1 < loss2
+        elif loss1 is not None:
+            return True
+        return False
 
     def _enforce_population_limit(self, exclude_genome_id: str):
         if len(self.genomes) <= self.config.max_population:
@@ -160,7 +167,10 @@ class GenomeDatabase:
         num_to_remove = len(self.genomes) - self.config.max_population
 
         all_genomes = list(self.genomes.values())
-        sorted_genomes = sorted(all_genomes, key=lambda x: x.metrics["loss"])
+        sorted_genomes = sorted(
+            all_genomes,
+            key=lambda x: x.metrics.get("loss", float("inf"))
+        )
 
         genomes_to_remove = []
         protected_genomes = {exclude_genome_id, self.best_genome_id} - {None}

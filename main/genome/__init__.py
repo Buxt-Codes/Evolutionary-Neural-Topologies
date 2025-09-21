@@ -1,3 +1,3 @@
-from genome import Genome
+from .genome import Genome
 
 __all__ = ["Genome"]

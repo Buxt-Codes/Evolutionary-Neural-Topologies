@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import pandas as pd
 
-from config import Config
-from genome import Genome
+from .config import Config
+from .genome import Genome
 
 def rmse(y_true, y_pred):
     return torch.sqrt(torch.mean((y_pred - y_true) ** 2))
