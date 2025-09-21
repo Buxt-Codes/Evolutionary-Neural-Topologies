@@ -1,9 +1,10 @@
 from typing import Optional, Dict
-from dataclasses import field
+from dataclasses import dataclass, field
 import time
 
 from ..genome import Genome
 
+@dataclass
 class GenomeEntry:
     id: str
     genome: Genome
@@ -14,4 +15,5 @@ class GenomeEntry:
     timestamp: float = field(default_factory=time.time)
     iteration_found: int = 0
 
+    coords: Optional[str] = None
     metrics: Dict[str, float] = field(default_factory=dict)

@@ -9,8 +9,7 @@ from ...config import Config
 
 class BaseGenome:
     """Represents an individual's genetic makeup, defining a neural network."""
-    def __init__(self, id: int, config: Config):
-        self.id = id
+    def __init__(self, config: Config):
         self.nodes: Dict[int, NodeGene] = {}
         self.connections: Dict[int, ConnectionGene] = {}
         self.fitness = 0.0
@@ -233,12 +232,11 @@ class BaseGenome:
 
     # --- crossover ---
     @staticmethod
-    def crossover(parent1: 'BaseGenome', parent2: 'BaseGenome', child_id: int, config: Config) -> 'BaseGenome':
+    def crossover(parent1: 'BaseGenome', parent2: 'BaseGenome', config: Config) -> 'BaseGenome':
         """Performs crossover between two parent genomes."""
 
         # Create base child
         child = copy.deepcopy(parent1)
-        child.id = child_id
 
         # Random crossover point
         start_frac, end_frac = sorted([random.random(), random.random()])

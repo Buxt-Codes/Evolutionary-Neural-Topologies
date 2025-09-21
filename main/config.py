@@ -1,11 +1,25 @@
 class Config:
 
     # =====================
+    # Evolutionary Loop
+    # =====================
+    max_iterations = 100
+    num_workers = 10
+    worker_gpu_fraction = 1 / num_workers * 0.75
+    worker_timeout = 600
+    log_file = "evolution.log"
+
+    exploitation_prob = 0.2
+
+    # =====================
     # Database
     # =====================
+    db_path = "database.pkl"
+    db_save_interval = 25
+
     # Population
     num_islands = 5
-    max_pop_per_island = 100
+    max_population = 100
     initial_pop_per_island = 25
 
     # Feature Bins
@@ -14,18 +28,20 @@ class Config:
     num_nodes_bins = 10
     num_layers_bins = 10
 
+    # Migration
+    migration_interval = 10
+    migration_prob = 0.5
+    num_to_migrate = 5 # Ensure that the num_to_migrate x num_islands <= max_population
+
+    # =====================
+    # Network
+    # =====================
     # Network
     input_size = 4
     output_size = 1
 
     # Bias
     use_bias = True
-
-    # Speciation
-    c1 = 1.0
-    c2 = 1.0
-    c3 = 0.4
-    compatibility_threshold = 3.0
 
     # Mutation
     max_mutations = 1
@@ -35,19 +51,20 @@ class Config:
     prob_remove_node = 0.05
 
     # Crossover
-    prob_crossover = 0.8
-    
-    # Reproduction
-    survival_threshold = 0.2
-    crossover_prob = 0.75
-
-    # Evaluatation
-    epochs = 3
-    batch_size = 32
-    train_data_path = ""
-    val_data_path = ""
+    crossover_prob = 0.5
 
     # Initialisation
     initial_connection_prob = 0.5
     initial_max_hidden = 50
     initial_max_layers = 10
+
+    # =====================
+    # Evaluation
+    # =====================
+    epochs = 3
+    batch_size = 32
+    train_data_path = ""
+    val_data_path = ""
+
+    model_path = "trained_models/"
+

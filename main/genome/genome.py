@@ -5,9 +5,8 @@ from.genome_net import GenotypeNet
 from ..config import Config
 
 class Genome:
-    def __init__(self, id: int, config: Config):
-        self.id: int = id
-        self.genome = BaseGenome(id, config)
+    def __init__(self, config: Config):
+        self.genome = BaseGenome(config)
         self.fitness: float = 0.0
         
         self.update_metadata()
@@ -46,15 +45,9 @@ class Genome:
             
         self.update_metadata()
     
-    def crossover(self, id: int, other: 'Genome'):
-        self.genome = BaseGenome.crossover(self.genome, other.genome, self.id, self.genome.config)
+    def crossover(self, other: 'Genome'):
+        self.genome = BaseGenome.crossover(self.genome, other.genome, self.genome.config)
         self.update_metadata()
 
     def build_net(self):
         return GenotypeNet(self.genome, self.genome.config)
-    
-    def reset(self):
-        self.genome = BaseGenome(self.id, self.genome.config)
-    
-    def __repr__(self):
-        return f"Genome(id={self.id}, fitness={self.fitness})"

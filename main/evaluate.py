@@ -18,7 +18,7 @@ def evaluate(id: str, genome: Genome, config: Config):
 
     y_column = ""
 
-    train_df = pd.read_csv(config.train_path)
+    train_df = pd.read_csv(config.train_data_path)
     train_y = torch.tensor(train_df[y_column].values, dtype=torch.float32)
     train_x = torch.tensor(train_df.drop(columns=[y_column]).values, dtype=torch.float32)
 
@@ -67,13 +67,33 @@ def evaluate(id: str, genome: Genome, config: Config):
         if val_loss:
             if val_loss < best_loss:
                 best_loss = val_loss
-                torch.save(net.state_dict(), config.model_path + f"_{id}.pt")
+                torch.save(
+                    {
+                        'state_dict': net.state_dict(),
+                        'genome': genome
+                    }, 
+                    config.model_path + f"{id}.pt"
+                )
         else:
             if train_loss < best_loss:
                 best_loss = train_loss
-                torch.save(net.state_dict(), config.model_path + f"_{id}.pt")
-        
-    return {
-        "loss": val_loss / len(val_dataloader) if val_loss else train_loss / len(train_dataloader),
-        "rmse": val_rmse / len(val_dataloader) if val_rmse else train_rmse / len(train_dataloader)
-    }
+                torch.save(
+                    {
+                        'state_dict': net.state_dict(),
+                        'genome': genome
+                    }, 
+                    config.model_path + f"{id}.pt"
+                )
+    
+    net.load_state_dict(torch.load(config.model_path + f"{id}.pt")['state_dict'])
+
+    if config.val_data_path:
+        return {
+            "loss": val_loss / len(val_dataloader),
+            "rmse": val_rmse / len(val_dataloader)
+        }
+    else:
+        return {
+            "loss": train_loss / len(train_dataloader),
+            "rmse": train_rmse / len(train_dataloader)
+        }
