@@ -6,6 +6,7 @@ import uuid
 import copy
 import os
 from time import monotonic
+import traceback
 
 import torch
 import logging
@@ -78,6 +79,7 @@ def _worker_target(
     if torch.cuda.is_available():
         torch.cuda.set_per_process_memory_fraction(gpu_mem_fraction, device=0)
 
+    logger.info(f"Iteration {iteration}, Child {genome.id}: Starting Evaluation")
     try:
         from .evaluate import evaluate
         from .data import GenomeEntry
@@ -86,12 +88,13 @@ def _worker_target(
         child_genome = copy.deepcopy(genome.genome)
         inspiration_genome = copy.deepcopy(inspiration.genome)
 
+        logger.info(f"Iteration {iteration}, Child {child_id}: Starting Crossover/Mutation")
         if random.random() < config.crossover_prob:
             child_genome.crossover(inspiration_genome)
         else:
             child_genome.mutate()
 
-        logger.info(f"Iteration {iteration}, Child {child_id}: Starting Evaluation")
+        logger.info(f"Iteration {iteration}, Child {child_id}: Starting Evaluation Training")
         metrics = evaluate(child_id, child_genome, config)
         logger.info(f"Iteration {iteration}, Child {child_id}: Evaluation Metrics={metrics}")
 
@@ -107,7 +110,7 @@ def _worker_target(
         q.put(result)
 
     except Exception as e:
-        logger.exception(f"[Worker Error]Iteration {iteration}: {e}")
+        logger.error(f"[Worker Error]Iteration {iteration}: {traceback.format_exc()}")
         q.put(None)
 
 class EvolutionaryLoop:
@@ -124,13 +127,13 @@ class EvolutionaryLoop:
     ) -> None:
         self.db = GenomeDatabase(self.config, path=self.config.db_path if from_checkpoint else None)
 
-        log_queue = mp.Queue()
-        listener = mp.Process(target=listener_process, args=(log_queue, self.log_file))
+        self.log_queue = mp.Queue()
+        listener = mp.Process(target=listener_process, args=(self.log_queue, self.log_file))
         listener.start()
 
         logger = logging.getLogger("GeneticEvolution")
         logger.setLevel(logging.DEBUG)
-        logger.addHandler(QueueHandler(log_queue))
+        logger.addHandler(QueueHandler(self.log_queue))
 
         logger.info("Starting Genetic Evolution Loop")
 
@@ -168,6 +171,8 @@ class EvolutionaryLoop:
                 # Non-blocking result
                 try:
                     result = q.get_nowait()
+                    logger.info(f"Iteration {iteration}: Received, metrics={result.metrics}")
+                    logger.info(f"Current Processes: {pending}")
                 except Exception:
                     continue
                 else:
@@ -195,7 +200,7 @@ class EvolutionaryLoop:
 
             await asyncio.sleep(0.01)
 
-        log_queue.put(None)
+        self.log_queue.put(None)
         listener.join()
         logger.info("Genetic Evolution Loop Complete")
 
@@ -209,7 +214,7 @@ class EvolutionaryLoop:
         q = mp.Queue()
         proc = mp.Process(
             target=_worker_target,
-            args=(self.config, parent_genome, inspiration, iteration, q, dict(os.environ), self.gpu_mem_fraction),
+            args=(self.config, parent_genome, inspiration, iteration, q, dict(os.environ), self.log_queue, self.gpu_mem_fraction),
         )
         proc.start()
         return proc, q

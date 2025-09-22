@@ -4,7 +4,7 @@ class Config:
     # Evolutionary Loop
     # =====================
     max_iterations = 100
-    num_workers = 10
+    num_workers = 2
     worker_gpu_fraction = 1 / num_workers * 0.75
     worker_timeout = 600
     log_file = "evolution.log"
@@ -63,8 +63,8 @@ class Config:
     # =====================
     epochs = 3
     batch_size = 32
-    train_data_path = ""
-    val_data_path = ""
+    train_data_path = "data/processed/train.csv"
+    val_data_path = "data/processed/val.csv"
 
     model_path = "trained_models/"
 

@@ -16,7 +16,7 @@ def evaluate(id: str, genome: Genome, config: Config):
     optimiser = torch.optim.AdamW(net.parameters(), lr=0.01)
     scheduler = torch.optim.lr_scheduler.StepLR(optimiser, step_size=10, gamma=0.1)
 
-    y_column = ""
+    y_column = "BeatsPerMinute"
 
     train_df = pd.read_csv(config.train_data_path)
     train_y = torch.tensor(train_df[y_column].values, dtype=torch.float32)
