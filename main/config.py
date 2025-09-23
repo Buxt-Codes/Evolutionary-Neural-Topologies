@@ -6,7 +6,7 @@ class Config:
     max_iterations = 1000
     num_workers = 10
     worker_gpu_fraction = 1 / num_workers * 0.75
-    worker_timeout = 600
+    worker_timeout = 300
     log_path = "evolution.log"
     stats_path = "stats.csv"
 
@@ -20,7 +20,7 @@ class Config:
 
     # Population
     num_islands = 5
-    max_population = 100
+    max_population = 250
     initial_pop_per_island = 10
 
     # Feature Bins
@@ -32,7 +32,7 @@ class Config:
     # Migration
     migration_interval = 10
     migration_prob = 0.5
-    num_to_migrate = 5 # Ensure that the num_to_migrate x num_islands <= max_population
+    num_to_migrate = 10 # Ensure that the num_to_migrate x num_islands <= max_population
 
     # =====================
     # Network
@@ -45,11 +45,11 @@ class Config:
     use_bias = True
 
     # Mutation
-    max_mutations = 5
-    prob_add_connection = 0.5
-    prob_remove_connection = 0.5
-    prob_add_node = 0.3
-    prob_remove_node = 0.3
+    max_mutations = 20
+    prob_add_connection = 0.3
+    prob_remove_connection = 0.3
+    prob_add_node = 0.15
+    prob_remove_node = 0.15
 
     # Crossover
     crossover_prob = 0.5

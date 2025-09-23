@@ -51,3 +51,7 @@ class Genome:
 
     def build_net(self):
         return GenotypeNet(self.genome, self.genome.config)
+
+    def update_genome(self, genome: BaseGenome):
+        self.genome = genome
+        return self

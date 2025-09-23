@@ -372,6 +372,9 @@ class BaseGenome:
                 child.connections[child.connection_idx] = new_conn
                 child.connection_idx += 1
         
+        child.input_nodes = [nid for nid in child.input_nodes if nid in child.nodes]
+        child.output_nodes = [nid for nid in child.output_nodes if nid in child.nodes]
+
         child.prune()
         
         return child
@@ -416,9 +419,11 @@ class BaseGenome:
             can_reach_outputs |= nx.ancestors(G, out) | {out}
 
         valid_nodes = reachable_from_inputs & can_reach_outputs
+        valid_nodes |= set(self.input_nodes) | set(self.output_nodes)
 
         # Remove invalid nodes
         invalid_nodes = set(G.nodes()) - valid_nodes
+        invalid_nodes -= set(self.input_nodes) | set(self.output_nodes)
         G.remove_nodes_from(invalid_nodes)
 
         # Update genome's nodes + connections

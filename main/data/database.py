@@ -1,5 +1,5 @@
 from typing import Dict, Optional, List
-import torch
+import math
 import pickle
 import uuid
 import random
@@ -134,15 +134,16 @@ class GenomeDatabase:
         elif num_bins < 1: 
             raise ValueError("num_bins must be > 1")
     
-        # Calculate the base for the max_value to be mapped to the last bin
+        value = max(0.0, value)  
+
+        # Calculate base so last bin represents max_value
         base = (max_value + 1) ** (1 / (num_bins - 1))
 
         # Map value to bin
-        val_t = torch.tensor(value)
-        bin_idx = torch.floor(torch.log(val_t + 1) / torch.log(torch.tensor(base)))
+        bin_idx = math.floor(math.log(value + 1) / math.log(base))
 
         # Clamp to valid range
-        bin_idx = max(0, min(value, num_bins - 1))
+        bin_idx = max(0, min(bin_idx, num_bins - 1))
 
         return int(bin_idx)
 

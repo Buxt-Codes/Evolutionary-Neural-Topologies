@@ -93,7 +93,12 @@ def _worker_target(
         else:
             child_genome.mutate()
 
-        metrics = evaluate(child_id, child_genome, config)
+        child_genome, metrics = evaluate(child_id, child_genome, config)
+
+        if child_genome is None:
+            raise Exception("Child genome is None")
+        if metrics is None:
+            raise Exception("Metrics are None")
 
         result = GenomeEntry(
             id=child_id,
@@ -183,11 +188,10 @@ class EvolutionaryLoop:
                     if result is not None:
                         self.db.add(result)
                         self.log_stats(result)
-                        if current_iteration % self.config.db_save_interval == 0:
+                        if completed_iterations % self.config.db_save_interval == 0:
                             self.db.save(self.config.db_path)
-                            self.log_checkpoint(completed_iterations)
+                            self.log_checkpoint(logger, completed_iterations)
                         completed_iterations += 1
-                        logger.info(f"Iteration {iteration}: Saved, metrics={result.metrics}")
                     done_iters.append(iteration)
 
             # cleanup finished/terminated
@@ -236,20 +240,26 @@ class EvolutionaryLoop:
         )
         df.to_csv(self.config.stats_path, mode="a", header=False, index=False)
     
-    def log_checkpoint(self, iteration: int):
+    def log_checkpoint(self, logger: logging.Logger, iteration: int):
         best = self.db.best_genome
-        best_islands = sorted(
-            self.db.best_genome_per_island.items(),
-            key=lambda x: x[1].metrics["loss"]
-        )
+        if best and "loss" in best.metrics:
+            best_str = f"loss={best.metrics['loss']:.6f}, rmse={best.metrics['rmse']:.6f}"
+        else:
+            best_str = "None"
+        best_islands = [
+            (i, genome)
+            for i, genome in enumerate(self.db.best_genome_per_island)
+            if genome is not None and genome.metrics and "loss" in genome.metrics
+        ]
+        best_islands.sort(key=lambda x: x[1].metrics["loss"])
 
         islands_str = " | ".join(
             f"Island: {island_id}: loss={genome.metrics['loss']:.6f}, rmse={genome.metrics['rmse']:.6f}"
             for island_id, genome in best_islands
         )
 
-        logging.info(
+        logger.info(
             f"[Checkpoint] Iteration: {iteration} | saved to {self.config.db_path} | "
-            f"Global Best -> loss={best.metrics['loss']:.6f}, rmse={best.metrics['rmse']:.6f} | "
+            f"Global Best -> {best_str} | "
             f"Best per Island -> {islands_str}"
         )
