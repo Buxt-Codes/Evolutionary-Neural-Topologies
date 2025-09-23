@@ -18,15 +18,19 @@ def evaluate(id: str, genome: Genome, config: Config):
 
     y_column = "BeatsPerMinute"
 
-    train_df = pd.read_csv(config.train_data_path)
+    train_df = pd.read_csv(config.train_data_path).drop(columns=["id"], inplace=True)
     train_y = torch.tensor(train_df[y_column].values, dtype=torch.float32)
     train_x = torch.tensor(train_df.drop(columns=[y_column]).values, dtype=torch.float32)
 
     train_dataset = torch.utils.data.TensorDataset(train_x, train_y)
     train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
 
+    norm_param = pd.read_csv("data/processed/norm_params.csv")
+    mean_y = norm_param[y_column].iloc[0]
+    std_y = norm_param[y_column].iloc[1]
+
     if config.val_data_path:
-        val_df = pd.read_csv(config.val_data_path)
+        val_df = pd.read_csv(config.val_data_path).drop(columns=["id"], inplace=True)
         val_y = torch.tensor(val_df[y_column].values, dtype=torch.float32)
         val_x = torch.tensor(val_df.drop(columns=[y_column]).values, dtype=torch.float32)
 
@@ -43,13 +47,13 @@ def evaluate(id: str, genome: Genome, config: Config):
         net.train()
         for batch in train_dataloader:
             optimiser.zero_grad()
-            output = net(batch[0])
+            output = net(batch[0]).squeeze(1)
             loss = criterion(output, batch[1])
             loss.backward()
             optimiser.step()
 
             train_loss += loss.item()
-            train_rmse += rmse(output, batch[1]).item()
+            train_rmse += rmse(output * std_y + mean_y, batch[1] * std_y + mean_y).item()
 
         scheduler.step()
 
@@ -59,10 +63,10 @@ def evaluate(id: str, genome: Genome, config: Config):
                 val_loss = 0.0
                 val_rmse = 0.0
                 for batch in val_dataloader:
-                    output = net(batch[0])
+                    output = net(batch[0]).squeeze(1)
                     loss = criterion(output, batch[1])
                     val_loss += loss.item()
-                    val_rmse += rmse(output, batch[1]).item()
+                    val_rmse += rmse(output * std_y + mean_y, batch[1] * std_y + mean_y).item()
 
         if val_loss:
             if val_loss < best_loss:
@@ -85,7 +89,7 @@ def evaluate(id: str, genome: Genome, config: Config):
                     config.model_path + f"{id}.pt"
                 )
     
-    net.load_state_dict(torch.load(config.model_path + f"{id}.pt")['state_dict'])
+    net.load_state_dict(torch.load(config.model_path + f"{id}.pt", weights_only=False)['state_dict'])
 
     if config.val_data_path:
         return {

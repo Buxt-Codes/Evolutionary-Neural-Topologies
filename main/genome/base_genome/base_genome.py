@@ -187,7 +187,7 @@ class BaseGenome:
         self.connection_idx += 1
 
         # Connection 2: new node -> original output (original weight)
-        conn2 = ConnectionGene(self.node_idx - 1, out_node, self.connection_idx, weight=original_weight)
+        conn2 = ConnectionGene(self.connection_idx, self.node_idx - 1, out_node, weight=original_weight)
         self.connections[self.connection_idx] = conn2
         self.connection_idx += 1
 

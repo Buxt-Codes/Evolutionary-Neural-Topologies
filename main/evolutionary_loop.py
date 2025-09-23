@@ -7,6 +7,7 @@ import copy
 import os
 from time import monotonic
 import traceback
+import pandas as pd
 
 import torch
 import logging
@@ -79,7 +80,6 @@ def _worker_target(
     if torch.cuda.is_available():
         torch.cuda.set_per_process_memory_fraction(gpu_mem_fraction, device=0)
 
-    logger.info(f"Iteration {iteration}, Child {genome.id}: Starting Evaluation")
     try:
         from .evaluate import evaluate
         from .data import GenomeEntry
@@ -88,15 +88,12 @@ def _worker_target(
         child_genome = copy.deepcopy(genome.genome)
         inspiration_genome = copy.deepcopy(inspiration.genome)
 
-        logger.info(f"Iteration {iteration}, Child {child_id}: Starting Crossover/Mutation")
         if random.random() < config.crossover_prob:
             child_genome.crossover(inspiration_genome)
         else:
             child_genome.mutate()
 
-        logger.info(f"Iteration {iteration}, Child {child_id}: Starting Evaluation Training")
         metrics = evaluate(child_id, child_genome, config)
-        logger.info(f"Iteration {iteration}, Child {child_id}: Evaluation Metrics={metrics}")
 
         result = GenomeEntry(
             id=child_id,
@@ -119,16 +116,23 @@ class EvolutionaryLoop:
         self.timeout = getattr(config, "worker_timeout", 600)  
         self.max_workers = config.num_workers
         self.gpu_mem_fraction = getattr(config, "worker_gpu_fraction", 0.5)
-        self.log_file = getattr(config, "log_file", "evolution.log")
+        self.log_path = getattr(config, "log_oath", "evolution.log")
 
     async def run_evolution(
         self,
         from_checkpoint: bool = False
     ) -> None:
         self.db = GenomeDatabase(self.config, path=self.config.db_path if from_checkpoint else None)
+        
+        os.makedirs(self.config.model_path, exist_ok=True)
+        
+        if not os.path.exists(self.config.stats_path):
+            headers = ["id", "generation", "iteration", "parent", "loss", "rmse"]
+            df = pd.DataFrame(columns=headers)
+            df.to_csv(self.config.stats_path, index=False)
 
         self.log_queue = mp.Queue()
-        listener = mp.Process(target=listener_process, args=(self.log_queue, self.log_file))
+        listener = mp.Process(target=listener_process, args=(self.log_queue, self.log_path))
         listener.start()
 
         logger = logging.getLogger("GeneticEvolution")
@@ -172,16 +176,16 @@ class EvolutionaryLoop:
                 try:
                     result = q.get_nowait()
                     logger.info(f"Iteration {iteration}: Received, metrics={result.metrics}")
-                    logger.info(f"Current Processes: {pending}")
                 except Exception:
                     continue
                 else:
                     proc.join()
                     if result is not None:
                         self.db.add(result)
+                        self.log_stats(result)
                         if current_iteration % self.config.db_save_interval == 0:
                             self.db.save(self.config.db_path)
-                            logger.info(f"Iteration {iteration}: Saved DB to {self.config.db_path}")
+                            self.log_checkpoint(completed_iterations)
                         completed_iterations += 1
                         logger.info(f"Iteration {iteration}: Saved, metrics={result.metrics}")
                     done_iters.append(iteration)
@@ -218,3 +222,34 @@ class EvolutionaryLoop:
         )
         proc.start()
         return proc, q
+
+    def log_stats(self, result: GenomeEntry) -> None:
+        df = pd.DataFrame(
+            {
+                "id": [result.id],
+                "generation": [result.generation],
+                "iteration": [result.iteration_found],
+                "parent": [result.parent_id],
+                "loss": [result.metrics["loss"]],
+                "rmse": [result.metrics["rmse"]]
+            }
+        )
+        df.to_csv(self.config.stats_path, mode="a", header=False, index=False)
+    
+    def log_checkpoint(self, iteration: int):
+        best = self.db.best_genome
+        best_islands = sorted(
+            self.db.best_genome_per_island.items(),
+            key=lambda x: x[1].metrics["loss"]
+        )
+
+        islands_str = " | ".join(
+            f"Island: {island_id}: loss={genome.metrics['loss']:.6f}, rmse={genome.metrics['rmse']:.6f}"
+            for island_id, genome in best_islands
+        )
+
+        logging.info(
+            f"[Checkpoint] Iteration: {iteration} | saved to {self.config.db_path} | "
+            f"Global Best -> loss={best.metrics['loss']:.6f}, rmse={best.metrics['rmse']:.6f} | "
+            f"Best per Island -> {islands_str}"
+        )
