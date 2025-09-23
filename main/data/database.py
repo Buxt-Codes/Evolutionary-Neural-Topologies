@@ -4,6 +4,7 @@ import pickle
 import uuid
 import random
 import copy
+import os
 
 from ..genome import Genome
 from .genome_entry import GenomeEntry
@@ -122,6 +123,10 @@ class GenomeDatabase:
                 del self.islands[genome.island][genome.coords]
             
             del self.genomes[id]
+        
+        file_path = os.path.join(self.config.model_path, f"{id}.pt")
+        if os.path.exists(file_path):
+            os.remove(file_path)
         
     def _get_bin(self, value: float, max_value: int = 1000, num_bins: int = 10) -> int:
         if num_bins == 1:
