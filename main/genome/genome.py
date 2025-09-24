@@ -20,28 +20,19 @@ class Genome:
 
         mutations = 0
         while mutations < (config.max_mutations if config.max_mutations > 0 else 1):
-            prob_conditions = {
-                "add_connection": config.prob_add_connection, 
-                "remove_connection": config.prob_remove_connection, 
-                "add_node": config.prob_add_node, 
-                "remove_node": config.prob_remove_node
-            }
-            
-            probs = {key: random.random() for key in prob_conditions}
-            prob_order = sorted(probs.items(), key=lambda x: x[1], reverse=True)
-            
-            mutation_funcs = {
-                "add_connection": self.genome.mutate_add_connection,
-                "remove_connection": self.genome.mutate_remove_connection,
-                "add_node": self.genome.mutate_add_node,
-                "remove_node": self.genome.mutate_remove_node,
-            }
-
-            for key, score in prob_order:
-                if score < prob_conditions[key]:
-                    mutation_funcs[key]()
-                    mutations += 1
-                    break
+            prob = random.random()
+            if prob < config.prob_add_connection:
+                self.genome.mutate_add_connection()
+                mutations += 1
+            elif prob < config.prob_add_node + config.prob_add_connection:
+                self.genome.mutate_add_node()
+                mutations += 1
+            elif prob < config.prob_remove_connection + config.prob_add_node + config.prob_add_connection:
+                self.genome.mutate_remove_connection()
+                mutations += 1
+            elif prob < config.prob_remove_node + config.prob_remove_connection + config.prob_add_node + config.prob_add_connection:
+                self.genome.mutate_remove_node()
+                mutations += 1
             
         self.update_metadata()
     

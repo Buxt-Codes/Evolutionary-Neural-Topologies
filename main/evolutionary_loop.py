@@ -143,6 +143,7 @@ class EvolutionaryLoop:
         logger = logging.getLogger("GeneticEvolution")
         logger.setLevel(logging.DEBUG)
         logger.addHandler(QueueHandler(self.log_queue))
+        self.db.logger = logger
 
         logger.info("Starting Genetic Evolution Loop")
 

@@ -14,6 +14,7 @@ class GenomeDatabase:
     def __init__(self, config: Config, path: Optional[str] = None):
         self.genomes: Dict[str, GenomeEntry] = {}
         self.config = config
+        self.logger = None
 
         self.islands: List[Dict[str, GenomeEntry]] = [{} for _ in range(config.num_islands)]
         self.best_genome_per_island: List[Optional[GenomeEntry]] = [None for _ in range(config.num_islands)]
@@ -69,6 +70,8 @@ class GenomeDatabase:
         existing_genome = self.get_genome_by_coords(genome.island, genome.coords)
         if existing_genome is not None:
             if self._is_better(genome, existing_genome):
+                if self.logger:
+                    self.logger.info(f"Island {genome.island}, coords {genome.coords}: Replaced existing genome: {existing_genome.id} with new genome: {genome.id}")
                 self._delete_genome(existing_genome.id)
         
         self.genomes[genome.id] = genome
@@ -188,12 +191,11 @@ class GenomeDatabase:
             if genome.id not in protected_genomes:
                 genomes_to_remove.append(genome)
         
+        if genomes_to_remove and self.logger:
+            self.logger.info(f"Removing {len(genomes_to_remove)} genomes to enforce population limit")
+
         for genome in genomes_to_remove:
-            if genome.id in self.genomes:
-                del self.genomes[genome.id]
-            
-            if genome.coords in self.islands[genome.island]:
-                del self.islands[genome.island][genome.coords]
+            self._delete_genome(genome.id)
     
     def _update_best_genome(self, genome: GenomeEntry):
         if self.best_genome is None:
@@ -205,6 +207,9 @@ class GenomeDatabase:
         if self._is_better(genome, best_genome):
             self.best_genome = genome
             self.best_genome_id = genome.id
+
+            if self.logger:
+                self.logger.info(f"New best genome: {self.best_genome_id}")
     
     def _update_best_genome_per_island(self, genome: GenomeEntry):
         island = genome.island
@@ -215,7 +220,12 @@ class GenomeDatabase:
         best_genome_for_island = self.best_genome_per_island[island]
         if best_genome_for_island is None:
             self.best_genome_per_island[island] = genome
+            if self.logger:
+                self.logger.info(f"New best genome for island {island}: {self.best_genome_per_island[island].id}")
             return
         if self._is_better(genome, best_genome_for_island):
             self.best_genome_per_island[island] = genome
+
+            if self.logger:
+                self.logger.info(f"New best genome for island {island}: {self.best_genome_per_island[island].id}")
         

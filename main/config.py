@@ -4,18 +4,18 @@ class Config:
     # Evolutionary Loop
     # =====================
     max_iterations = 1000
-    num_workers = 10
+    num_workers = 2
     worker_gpu_fraction = 1 / num_workers * 0.75
     worker_timeout = 300
-    log_path = "evolution.log"
-    stats_path = "stats.csv"
+    log_path = "out/evolution.log"
+    stats_path = "out/stats.csv"
 
     exploitation_prob = 0.2
 
     # =====================
     # Database
     # =====================
-    db_path = "database.pkl"
+    db_path = "out/database.pkl"
     db_save_interval = 5
 
     # Population
@@ -45,10 +45,10 @@ class Config:
     use_bias = True
 
     # Mutation
-    max_mutations = 20
-    prob_add_connection = 0.3
-    prob_remove_connection = 0.3
-    prob_add_node = 0.15
+    max_mutations = 20              # Ensure that total prob > 1
+    prob_add_connection = 0.4
+    prob_remove_connection = 0.15
+    prob_add_node = 0.3
     prob_remove_node = 0.15
 
     # Crossover
@@ -62,10 +62,10 @@ class Config:
     # =====================
     # Evaluation
     # =====================
-    epochs = 3
+    epochs = 1
     batch_size = 1024
     train_data_path = "data/processed/train.csv"
     val_data_path = "data/processed/val.csv"
 
-    model_path = "trained_models/"
+    model_path = "out/trained_models/"
 
