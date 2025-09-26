@@ -38,8 +38,8 @@ class Config:
     # Network
     # =====================
     # Network
-    input_size = 9
-    output_size = 1
+    input_size = 784
+    output_size = 10
 
     # Bias
     use_bias = True
@@ -56,16 +56,15 @@ class Config:
 
     # Initialisation
     initial_connection_prob = 0.5
-    initial_max_hidden = 25
-    initial_max_layers = 20
+    initial_max_hidden = 100
+    initial_max_layers = 50
 
     # =====================
     # Evaluation
     # =====================
     epochs = 1
-    batch_size = 1024
-    train_data_path = "data/processed/train.csv"
-    val_data_path = "data/processed/val.csv"
+    batch_size = 64
+    data_path = "data/mnist/"
 
     model_path = "out/trained_models/"
 

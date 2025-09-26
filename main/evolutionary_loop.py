@@ -236,7 +236,7 @@ class EvolutionaryLoop:
                 "iteration": [result.iteration_found],
                 "parent": [result.parent_id],
                 "loss": [result.metrics["loss"]],
-                "rmse": [result.metrics["rmse"]]
+                "accuracy": [result.metrics["accuracy"]]
             }
         )
         df.to_csv(self.config.stats_path, mode="a", header=False, index=False)
@@ -244,7 +244,7 @@ class EvolutionaryLoop:
     def log_checkpoint(self, logger: logging.Logger, iteration: int):
         best = self.db.best_genome
         if best and "loss" in best.metrics:
-            best_str = f"loss={best.metrics['loss']:.6f}, rmse={best.metrics['rmse']:.6f}"
+            best_str = f"loss={best.metrics['loss']:.6f}, accuracy={best.metrics['accuracy']:.6f}"
         else:
             best_str = "None"
         best_islands = [
@@ -255,7 +255,7 @@ class EvolutionaryLoop:
         best_islands.sort(key=lambda x: x[1].metrics["loss"])
 
         islands_str = " | ".join(
-            f"Island: {island_id}: loss={genome.metrics['loss']:.6f}, rmse={genome.metrics['rmse']:.6f}"
+            f"Island: {island_id}: loss={genome.metrics['loss']:.6f}, accuracy={genome.metrics['accuracy']:.6f}"
             for island_id, genome in best_islands
         )
 
